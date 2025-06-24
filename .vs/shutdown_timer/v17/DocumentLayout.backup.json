@@ -1,0 +1,37 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\\u0421\u002B\u002B Project\\shutdown_timer\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{38FDF7B3-777D-45AF-980D-CE9C3014DAA0}|shutdown_timer\\shutdown_timer.vcxproj|D:\\\u0421\u002B\u002B Project\\shutdown_timer\\shutdown_timer\\wWinMain.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{38FDF7B3-777D-45AF-980D-CE9C3014DAA0}|shutdown_timer\\shutdown_timer.vcxproj|solutionrelative:shutdown_timer\\wWinMain.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "wWinMain.cpp",
+              "DocumentMoniker": "D:\\\u0421\u002B\u002B Project\\shutdown_timer\\shutdown_timer\\wWinMain.cpp",
+              "RelativeDocumentMoniker": "shutdown_timer\\wWinMain.cpp",
+              "ToolTip": "D:\\\u0421\u002B\u002B Project\\shutdown_timer\\shutdown_timer\\wWinMain.cpp",
+              "RelativeToolTip": "shutdown_timer\\wWinMain.cpp",
+              "ViewState": "AgIAAHwAAAAAAAAAAADwv6QAAAAgAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
+              "WhenOpened": "2025-06-24T07:07:27.743Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
