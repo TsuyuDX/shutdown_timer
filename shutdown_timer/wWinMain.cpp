@@ -12,9 +12,11 @@
 #define ID_PRESET_30       104
 #define ID_PRESET_60       105
 #define ID_PRESET_120      106
+#define ID_LASTCHANCE_MSG  107
 
 HWND hTimerEdit, hStartButton, hCancelButton;
 int remainingSeconds = 0;
+bool lastChanceShown = false;
 
 bool ShutdownComputerWithPrivilege()
 {
@@ -41,11 +43,32 @@ bool ShutdownComputerWithPrivilege()
     return result != FALSE;
 }
 
+void ShowLastChanceDialog(HWND hwnd)
+{
+    // Создаем диалог с 30-секундным таймером
+    int result = MessageBoxW(hwnd,
+        L"Компьютер будет выключен через 1 минуту!\n\n"
+        L"У вас есть 30 секунд чтобы отменить выключение.\n"
+        L"Нажмите 'Отмена' чтобы прервать процесс.",
+        L"Последнее предупреждение",
+        MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST);
+
+    if (result == IDCANCEL)
+    {
+        KillTimer(hwnd, 1);
+        remainingSeconds = 0;
+        lastChanceShown = false;
+        SetWindowText(hTimerEdit, L"0");
+        MessageBoxW(hwnd, L"Выключение отменено!", L"Отмена", MB_OK | MB_ICONINFORMATION);
+    }
+}
+
 void SetTimerAndShowMessage(HWND hwnd, int minutes)
 {
     if (minutes > 0)
     {
         remainingSeconds = minutes * 60;
+        lastChanceShown = false;
 
         std::wstring msg = L"Компьютер будет выключен через " + std::to_wstring(minutes) + L" минут.";
         MessageBoxW(hwnd, msg.c_str(), L"Таймер установлен", MB_OK | MB_ICONINFORMATION);
@@ -118,6 +141,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case ID_CANCEL_BUTTON:
             KillTimer(hwnd, 1);
             remainingSeconds = 0;
+            lastChanceShown = false;
             SetWindowText(hTimerEdit, L"0");
             MessageBoxW(hwnd, L"Таймер отменен.", L"Информация", MB_OK | MB_ICONINFORMATION);
             break;
@@ -129,6 +153,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         if (remainingSeconds > 0)
         {
             remainingSeconds--;
+
+            // Показываем предупреждение за 1 минуту (60 секунд)
+            if (remainingSeconds == 60 && !lastChanceShown)
+            {
+                lastChanceShown = true;
+                ShowLastChanceDialog(hwnd);
+            }
 
             int minutes = remainingSeconds / 60;
             int seconds = remainingSeconds % 60;
