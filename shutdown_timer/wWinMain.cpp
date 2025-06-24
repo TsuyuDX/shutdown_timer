@@ -1,9 +1,12 @@
 #include <windows.h>
 #include <commctrl.h>
+#include <shlobj.h> // Для SHGetKnownFolderPath
 #include <string>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "shell32.lib")
+
 #pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 #define ID_TIMER_EDIT      101
@@ -17,6 +20,38 @@
 HWND hTimerEdit, hStartButton, hCancelButton;
 int remainingSeconds = 0;
 bool lastChanceShown = false;
+
+// Удаляет программу из автозагрузки (реестр и папка Startup)
+void RemoveFromAutostart()
+{
+    // 1. Удаление из реестра
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS)
+    {
+        RegDeleteValueW(hKey, L"MyShutdownTimer"); // Убедитесь, что имя совпадает с тем, что использовалось при добавлении
+        RegCloseKey(hKey);
+    }
+
+    // 2. Удаление из папки автозагрузки
+    PWSTR startupPath = NULL;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Startup, 0, NULL, &startupPath)))
+    {
+        wchar_t exeName[MAX_PATH];
+        GetModuleFileNameW(NULL, exeName, MAX_PATH);
+
+        // Извлекаем имя файла из полного пути
+        wchar_t* baseName = wcsrchr(exeName, L'\\');
+        if (baseName)
+            baseName++; // Пропустить слэш
+        else
+            baseName = exeName;
+
+        std::wstring shortcutPath = std::wstring(startupPath) + L"\\" + baseName;
+        DeleteFileW(shortcutPath.c_str());
+
+        CoTaskMemFree(startupPath);
+    }
+}
 
 bool ShutdownComputerWithPrivilege()
 {
@@ -45,7 +80,6 @@ bool ShutdownComputerWithPrivilege()
 
 void ShowLastChanceDialog(HWND hwnd)
 {
-    // Создаем диалог с 30-секундным таймером
     int result = MessageBoxW(hwnd,
         L"Компьютер будет выключен через 1 минуту!\n\n"
         L"У вас есть 30 секунд чтобы отменить выключение.\n"
@@ -154,7 +188,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
             remainingSeconds--;
 
-            // Показываем предупреждение за 1 минуту (60 секунд)
             if (remainingSeconds == 60 && !lastChanceShown)
             {
                 lastChanceShown = true;
@@ -189,6 +222,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {
+    // Удаляем себя из автозагрузки на всякий случай
+    RemoveFromAutostart();
+
     INITCOMMONCONTROLSEX icex = { sizeof(INITCOMMONCONTROLSEX), ICC_STANDARD_CLASSES };
     InitCommonControlsEx(&icex);
 
