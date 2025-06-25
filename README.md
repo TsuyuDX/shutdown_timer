@@ -56,8 +56,19 @@ Windows SDK
 
 Скрины изминения 
 Ьыло
+
+
+
+
+
 ![image](https://github.com/user-attachments/assets/433506da-e959-47be-b1bc-460b57be0234)
 
+
+
+
 Стало
+
+
+
 ![image](https://github.com/user-attachments/assets/49a4e325-e767-48b3-ac37-9a3945e4d345)
 
