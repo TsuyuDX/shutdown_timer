@@ -72,5 +72,6 @@ Windows SDK
 
 
 
-![image](https://github.com/user-attachments/assets/49a4e325-e767-48b3-ac37-9a3945e4d345)
+<img width="253" height="291" alt="image" src="https://github.com/user-attachments/assets/9854e83f-57a1-48e0-9880-abb98c279e08" />
+
 
