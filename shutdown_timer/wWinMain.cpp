@@ -1,5 +1,4 @@
 ﻿// ShutdownTimerV2.cpp
-
 #include <windows.h>
 #include <commctrl.h>
 #include <shellapi.h>
@@ -40,7 +39,7 @@ void StartShutdownTimer(HWND, int, int);
 void ShowFinalWarningDialog(HWND);
 HMENU BuildMenuBar();
 
-// Modern visual styling 
+// Modern visual styling
 void ApplyModernVisual(HWND hwnd)
 {
     HFONT hFont = CreateFontW(
@@ -54,11 +53,11 @@ void ApplyModernVisual(HWND hwnd)
         return TRUE;
         }, (LPARAM)hFont);
 
-    DWORD cornerPref = 2; 
+    DWORD cornerPref = 2;
     DwmSetWindowAttribute(hwnd, 33, &cornerPref, sizeof(cornerPref));
 }
 
-// System shutdown 
+// System shutdown
 bool PerformSystemShutdown()
 {
     HANDLE hToken;
@@ -79,7 +78,7 @@ bool PerformSystemShutdown()
     return result;
 }
 
-//  Draw button with soft hover like Win10 menu 
+// Draw button with soft hover
 void DrawModernButton(LPDRAWITEMSTRUCT dis)
 {
     HDC hdc = dis->hDC;
@@ -87,15 +86,15 @@ void DrawModernButton(LPDRAWITEMSTRUCT dis)
     bool isPressed = (dis->itemState & ODS_SELECTED);
     bool isHover = (dis->hwndItem == g_hoverButton);
 
-    COLORREF bg = RGB(250, 250, 250);
-    if (isHover)  bg = RGB(230, 240, 255);
-    if (isPressed) bg = RGB(210, 230, 250);
+    COLORREF bg = RGB(255, 255, 255);
+    if (isHover)  bg = RGB(235, 243, 255);
+    if (isPressed) bg = RGB(220, 235, 250);
 
     HBRUSH brush = CreateSolidBrush(bg);
     FillRect(hdc, &rc, brush);
     DeleteObject(brush);
 
-    HPEN pen = CreatePen(PS_SOLID, 1, RGB(200, 200, 200));
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(210, 210, 210));
     HGDIOBJ oldPen = SelectObject(hdc, pen);
     HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
     RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, 6, 6);
@@ -111,7 +110,7 @@ void DrawModernButton(LPDRAWITEMSTRUCT dis)
     DrawTextW(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 }
 
-// Final warning 
+// Final warning
 void ShowFinalWarningDialog(HWND hwnd)
 {
     int result = MessageBoxW(hwnd,
@@ -132,7 +131,7 @@ void ShowFinalWarningDialog(HWND hwnd)
     }
 }
 
-// Timer start 
+// Timer start
 void StartShutdownTimer(HWND hwnd, int minutes, int seconds)
 {
     g_TotalSeconds = minutes * 60 + seconds;
@@ -152,7 +151,7 @@ void StartShutdownTimer(HWND hwnd, int minutes, int seconds)
     SetTimer(hwnd, 1, 1000, NULL);
 }
 
-//  UI controls 
+// UI controls
 void InitializeUIControls(HWND hwnd)
 {
     CreateWindowW(L"STATIC", L"Время до выключения (минуты):", WS_VISIBLE | WS_CHILD,
@@ -213,7 +212,7 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         if (hover != g_hoverButton)
         {
             g_hoverButton = hover;
-            InvalidateRect(hwnd, NULL, TRUE);
+            InvalidateRect(hwnd, NULL, FALSE);
         }
         TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
         TrackMouseEvent(&tme);
@@ -222,7 +221,7 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
     case WM_MOUSELEAVE:
         g_hoverButton = NULL;
-        InvalidateRect(hwnd, NULL, TRUE);
+        InvalidateRect(hwnd, NULL, FALSE);
         break;
 
     case WM_COMMAND:
@@ -249,12 +248,25 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             SetWindowTextW(g_hMinutesInput, L"0");
             SetWindowTextW(g_hSecondsInput, L"0");
             SendMessageW(g_hProgressBar, PBM_SETPOS, 0, 0);
-            MessageBoxW(hwnd, L"Таймер отменён.", L"Информация", MB_OK | MB_ICONINFORMATION);
+            MessageBoxW(hwnd,
+                L"Таймер был успешно отменён.\n\nКомпьютер не будет выключен.",
+                L"Информация", MB_OK | MB_ICONINFORMATION);
             break;
+
         case IDM_FILE_ABOUT:
-            MessageBoxW(hwnd, L"Shutdown Timer V2\n\nСовременный Win10 стиль.\nАвтор: Tsuyu™",
-                L"О программе", MB_OK | MB_ICONINFORMATION);
+            MessageBoxW(hwnd,
+                L"Shutdown Timer V2\n\n"
+                L"Простое приложение для автоматического выключения компьютера.\n"
+                L"Позволяет задать время в минутах и секундах\n"
+                L"или выбрать готовые пресеты на 30, 60 и 120 минут.\n\n"
+                L"Перед выключением программа предупредит за 1 минуту.\n\n"
+                L"Версия: 2.0\n"
+                L"Автор: Tsuyu™",
+                L"О программе",
+                MB_OK | MB_ICONINFORMATION);
             break;
+
+
         case IDM_FILE_EXIT:
             DestroyWindow(hwnd);
             break;
@@ -296,22 +308,23 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     }
     return 0;
 }
-// Register window class 
+
+// Register window class
 ATOM RegisterMainWindowClass(HINSTANCE hInstance)
 {
     WNDCLASSEXW wcex = { sizeof(WNDCLASSEXW) };
     wcex.style = CS_HREDRAW | CS_VREDRAW;
     wcex.lpfnWndProc = MainWindowProc;
     wcex.hInstance = hInstance;
-    wcex.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+    wcex.hIcon = LoadIcon(nullptr, IDI_SHIELD); // стандартная иконка ПК
     wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wcex.lpszClassName = L"ShutdownTimerClass";
-    wcex.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
+    wcex.hIconSm = LoadIcon(nullptr, IDI_SHIELD);
     return RegisterClassExW(&wcex);
 }
 
-// Entry point 
+// Entry point
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow)
 {
     INITCOMMONCONTROLSEX icc = { sizeof(INITCOMMONCONTROLSEX), ICC_STANDARD_CLASSES };
