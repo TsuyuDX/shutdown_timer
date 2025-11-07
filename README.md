@@ -44,7 +44,7 @@ Visual Studio 2019 или новее
 Windows SDK
 
 Обновления (Что нового в интерфейсе)
-Добавлена поддержка закруглённых углов окна, что придаёт приложению современный внешний вид в стиле Windows 11. Это реализовано через вызов функции DwmSetWindowAttribute с атрибутом DWMWA_WINDOW_CORNER_PREFERENCE.
+Добавлена поддержка закруглённых углов окна, что придаёт приложению современный внешний вид в стиле Windows 11. 
 
 Использован системный шрифт Segoe UI размером 18pt для улучшенной читаемости элементов управления.
 
@@ -71,7 +71,7 @@ Windows SDK
 Стало
 
 
+<img width="326" height="368" alt="image" src="https://github.com/user-attachments/assets/db8efbdd-1142-485b-8997-1abb58e23635" />
 
-<img width="253" height="291" alt="image" src="https://github.com/user-attachments/assets/9854e83f-57a1-48e0-9880-abb98c279e08" />
 
 
