@@ -38,6 +38,8 @@ HINSTANCE g_hInstance;
 HWND g_hMainWindow = nullptr;
 HWND g_hMinutesInput = nullptr, g_hSecondsInput = nullptr;
 HWND g_hStartButton = nullptr, g_hCancelButton = nullptr, g_hProgressBar = nullptr;
+HWND g_hWarningDialog = nullptr;
+bool g_WarningActive = false;
 int g_TotalSeconds = 0;
 int g_RemainingSeconds = 0;
 bool g_IsFinalWarningShown = false;
@@ -103,12 +105,10 @@ bool PerformSystemAction()
         result = ExitWindowsEx(EWX_REBOOT | EWX_FORCE, SHTDN_REASON_MAJOR_APPLICATION);
         break;
     case IDM_MODE_SLEEP:
-        if (GetProcAddress(GetModuleHandleW(L"powrprof.dll"), "SetSuspendState"))
-            result = SetSuspendState(FALSE, TRUE, FALSE);
+        result = SetSuspendState(FALSE, TRUE, FALSE);
         break;
     case IDM_MODE_HIBERNATE:
-        if (GetProcAddress(GetModuleHandleW(L"powrprof.dll"), "SetSuspendState"))
-            result = SetSuspendState(TRUE, TRUE, FALSE);
+        result = SetSuspendState(TRUE, TRUE, FALSE);
         break;
     }
 
@@ -150,23 +150,35 @@ void DrawModernButton(LPDRAWITEMSTRUCT dis)
 
 void ShowFinalWarningDialog(HWND hwnd)
 {
-    if (g_SoundWarning) MessageBeep(MB_ICONWARNING);
+    if (g_WarningActive) return;
+    g_WarningActive = true;
 
-    int result = MessageBoxW(hwnd,
-        L"Осталась 1 минута до выполнения запланированного действия.\n\nНажмите \"Отмена\", чтобы прервать.",
-        L"Последнее предупреждение",
-        MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST);
+    // Воспроизводим звук только если включено предупреждение
+    if (g_SoundWarning)
+        MessageBeep(MB_ICONWARNING);
 
-    if (result == IDCANCEL)
-    {
-        KillTimer(hwnd, 1);
-        g_RemainingSeconds = 0;
-        g_IsFinalWarningShown = false;
-        SetWindowTextW(g_hMinutesInput, L"0");
-        SetWindowTextW(g_hSecondsInput, L"0");
-        SendMessageW(g_hProgressBar, PBM_SETPOS, 0, 0);
-        MessageBoxW(hwnd, L"Действие отменено.", L"Отмена", MB_OK | MB_ICONINFORMATION);
-    }
+    g_hWarningDialog = CreateWindowExW(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        L"#32770", L"Предупреждение",
+        WS_CAPTION | WS_SYSMENU | DS_CENTER,
+        CW_USEDEFAULT, CW_USEDEFAULT, 360, 160,
+        hwnd, NULL, g_hInstance, NULL);
+
+    CreateWindowW(L"STATIC",
+        L"Осталась 1 минута до выполнения действия.\nНажмите \"Отмена\", чтобы остановить таймер.",
+        WS_VISIBLE | WS_CHILD | SS_CENTER,
+        20, 20, 320, 60, g_hWarningDialog, NULL, g_hInstance, NULL);
+
+    HWND hCancel = CreateWindowW(L"BUTTON", L"Отмена",
+        WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+        120, 90, 100, 28, g_hWarningDialog, (HMENU)IDCANCEL, g_hInstance, NULL);
+
+    SendMessageW(hCancel, WM_SETFONT, (WPARAM)SendMessageW(hwnd, WM_GETFONT, 0, 0), TRUE);
+
+    SetTimer(g_hWarningDialog, 2, 30000, NULL); // авто-закрытие через 30 сек
+
+    ShowWindow(g_hWarningDialog, SW_SHOW);
+    UpdateWindow(g_hWarningDialog);
 }
 
 void StartShutdownTimer(HWND hwnd, int minutes, int seconds)
@@ -184,73 +196,72 @@ void StartShutdownTimer(HWND hwnd, int minutes, int seconds)
     if (minutes > 0) msg += std::to_wstring(minutes) + L" мин ";
     if (seconds > 0) msg += std::to_wstring(seconds) + L" сек.";
 
-    MessageBoxW(hwnd, msg.c_str(), L"Таймер установлен", MB_OK | MB_ICONINFORMATION);
+    // Звуковое уведомление только если включено
+    UINT boxFlags = MB_OK | MB_ICONINFORMATION;
+    if (!g_SoundWarning)
+        boxFlags &= ~MB_ICONINFORMATION; // убираем звуковой сигнал
+
+    MessageBoxW(hwnd, msg.c_str(), L"Таймер установлен", boxFlags);
+
     SetTimer(hwnd, 1, 1000, NULL);
 }
 
+
 void InitializeUIControls(HWND hwnd)
 {
-    // Общие настройки размеров и отступов
-    const int totalWidth = 300;       // ширина области, где располагаются элементы
-    const int marginX = 14;           // отступ слева (немного увеличен, чтобы всё было чуть правее)
-    const int marginY = 20;           // отступ сверху
-    const int labelHeight = 18;       // высота текстовых меток (STATIC)
-    const int editHeight = 26;        // высота полей ввода (EDIT)
-    const int buttonHeight = 30;      // высота кнопок
-    const int buttonWidth = 75;       // ширина маленьких кнопок (30, 60, 120 мин)
-    const int spacingY = 10;          // вертикальный промежуток между элементами одной группы
-    const int spacingSection = 22;    // отступ между большими блоками (например, ввод и кнопки)
+    const int totalWidth = 300;
+    const int marginX = 14;
+    const int marginY = 20;
+    const int labelHeight = 18;
+    const int editHeight = 26;
+    const int buttonHeight = 30;
+    const int buttonWidth = 75;
+    const int spacingY = 10;
+    const int spacingSection = 22;
 
-    int y = marginY; // текущая вертикальная координата для размещения элементов
+    int y = marginY;
 
-    // Создание шрифта для всех элементов интерфейса
     HFONT hFont = CreateFontW(
-        -MulDiv(10, GetDeviceCaps(GetDC(hwnd), LOGPIXELSY), 72), // размер 10pt
+        -MulDiv(10, GetDeviceCaps(GetDC(hwnd), LOGPIXELSY), 72),
         0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
 
-    // Метка для поля ввода минут
     HWND lblMin = CreateWindowW(L"STATIC", L"Время до действия (минуты):",
-        WS_VISIBLE | WS_CHILD | SS_LEFT,     // видимый элемент, выравнивание по левому краю
-        marginX, y, totalWidth, labelHeight, // позиция и размеры
-        hwnd, NULL, g_hInstance, NULL);
-    SendMessageW(lblMin, WM_SETFONT, (WPARAM)hFont, TRUE); // применяем шрифт
+        WS_VISIBLE | WS_CHILD | SS_LEFT,
+        marginX, y, totalWidth, labelHeight, hwnd, NULL, g_hInstance, NULL);
+    SendMessageW(lblMin, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-    y += labelHeight + spacingY; // сдвигаем вниз, чтобы разместить поле под надписью
+    y += labelHeight + spacingY;
 
-    // Поле ввода количества минут
     g_hMinutesInput = CreateWindowW(L"EDIT", L"30",
-        WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER, // видимое, числовое, центрированный текст
+        WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER,
         marginX, y, totalWidth, editHeight,
         hwnd, (HMENU)IDC_MINUTES_INPUT, g_hInstance, NULL);
     SendMessageW(g_hMinutesInput, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-    y += editHeight + spacingSection; // сдвигаем ниже для следующего блока
+    y += editHeight + spacingSection;
 
-    // Метка для поля ввода секунд
     HWND lblSec = CreateWindowW(L"STATIC", L"Дополнительно (секунды):",
         WS_VISIBLE | WS_CHILD | SS_LEFT,
         marginX, y, totalWidth, labelHeight,
         hwnd, NULL, g_hInstance, NULL);
     SendMessageW(lblSec, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-    y += labelHeight + spacingY; // ниже — поле для ввода секунд
+    y += labelHeight + spacingY;
 
-    // Поле ввода секунд
     g_hSecondsInput = CreateWindowW(L"EDIT", L"0",
         WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER,
         marginX, y, totalWidth, editHeight,
         hwnd, (HMENU)IDC_SECONDS_INPUT, g_hInstance, NULL);
     SendMessageW(g_hSecondsInput, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-    y += editHeight + spacingSection; // ниже — блок кнопок
+    y += editHeight + spacingSection;
 
-    // Создание кнопок пресетов (30, 60, 120 мин)
     DWORD btnStyle = WS_VISIBLE | WS_CHILD | BS_OWNERDRAW | WS_TABSTOP;
-    int btnSpacing = 10; // расстояние между кнопками
-    int totalPresetWidth = buttonWidth * 3 + btnSpacing * 2; // общая ширина группы кнопок
-    int startX = marginX + (totalWidth - totalPresetWidth) / 2; // центрируем группу кнопок
+    int btnSpacing = 10;
+    int totalPresetWidth = buttonWidth * 3 + btnSpacing * 2;
+    int startX = marginX + (totalWidth - totalPresetWidth) / 2;
 
     HWND b30 = CreateWindowW(L"BUTTON", L"30 мин", btnStyle,
         startX, y, buttonWidth, buttonHeight,
@@ -262,16 +273,14 @@ void InitializeUIControls(HWND hwnd)
         startX + (buttonWidth + btnSpacing) * 2, y, buttonWidth, buttonHeight,
         hwnd, (HMENU)IDC_PRESET_120MIN, g_hInstance, NULL);
 
-    // Применяем шрифт ко всем кнопкам
     SendMessageW(b30, WM_SETFONT, (WPARAM)hFont, TRUE);
     SendMessageW(b60, WM_SETFONT, (WPARAM)hFont, TRUE);
     SendMessageW(b120, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-    y += buttonHeight + spacingSection; // ниже — основные кнопки
+    y += buttonHeight + spacingSection;
 
-    // Кнопки “Запустить” и “Отменить”
-    int wideBtnWidth = 120;  // ширина больших кнопок
-    int btnGap = 20;         // расстояние между ними
+    int wideBtnWidth = 120;
+    int btnGap = 20;
     int totalWidth2 = wideBtnWidth * 2 + btnGap;
     startX = marginX + (totalWidth - totalWidth2) / 2;
 
@@ -288,11 +297,10 @@ void InitializeUIControls(HWND hwnd)
     SendMessageW(g_hStartButton, WM_SETFONT, (WPARAM)hFont, TRUE);
     SendMessageW(g_hCancelButton, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-    y += buttonHeight + spacingSection; // ниже — прогресс-бар
+    y += buttonHeight + spacingSection;
 
-    // Создание прогресс-бара
     INITCOMMONCONTROLSEX icex = { sizeof(icex), ICC_PROGRESS_CLASS };
-    InitCommonControlsEx(&icex); // инициализация класса прогресс-бара
+    InitCommonControlsEx(&icex);
 
     g_hProgressBar = CreateWindowExW(0, PROGRESS_CLASS, NULL,
         WS_CHILD | WS_VISIBLE | PBS_SMOOTH | WS_BORDER,
@@ -330,37 +338,41 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 {
     switch (msg)
     {
-    case WM_DRAWITEM:
-        if (lParam)
-            DrawModernButton((LPDRAWITEMSTRUCT)lParam);
-        return TRUE;
-
-    case WM_MOUSEMOVE:
-    {
-        POINT pt; GetCursorPos(&pt); ScreenToClient(hwnd, &pt);
-        HWND hover = ChildWindowFromPoint(hwnd, pt);
-        if (hover != g_hoverButton)
+    case WM_TIMER:
+        if (wParam == 2 && g_hWarningDialog)
         {
-            g_hoverButton = hover;
-            InvalidateRect(hwnd, NULL, FALSE);
+            DestroyWindow(g_hWarningDialog);
+            g_hWarningDialog = nullptr;
+            g_WarningActive = false;
+            KillTimer(hwnd, 2);
+            return 0;
         }
-        TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
-        TrackMouseEvent(&tme);
-    }
-    break;
 
-    case WM_MOUSELEAVE:
-        g_hoverButton = NULL;
-        InvalidateRect(hwnd, NULL, FALSE);
+        if (wParam == 1 && --g_RemainingSeconds >= 0)
+        {
+            SendMessageW(g_hProgressBar, PBM_SETPOS, g_TotalSeconds - g_RemainingSeconds, 0);
+
+            int mins = g_RemainingSeconds / 60;
+            int secs = g_RemainingSeconds % 60;
+            wchar_t bufM[8], bufS[8];
+            swprintf(bufM, 8, L"%d", mins);
+            swprintf(bufS, 8, L"%02d", secs);
+            SetWindowTextW(g_hMinutesInput, bufM);
+            SetWindowTextW(g_hSecondsInput, bufS);
+
+            if (!g_IsFinalWarningShown && g_RemainingSeconds == 60)
+            {
+                g_IsFinalWarningShown = true;
+                ShowFinalWarningDialog(hwnd);
+            }
+
+            if (g_RemainingSeconds == 0)
+            {
+                KillTimer(hwnd, 1);
+                PerformSystemAction();
+            }
+        }
         break;
-
-    case WM_CTLCOLORSTATIC:
-    {
-        HDC hdcStatic = (HDC)wParam;
-        SetBkMode(hdcStatic, TRANSPARENT);
-        SetTextColor(hdcStatic, RGB(0, 0, 0));
-        return (LRESULT)GetStockObject(NULL_BRUSH);
-    }
 
     case WM_COMMAND:
     {
@@ -370,8 +382,8 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_START_BUTTON:
         {
             wchar_t buf1[16], buf2[16];
-            GetWindowTextW(g_hMinutesInput, buf1, (int)std::size(buf1));
-            GetWindowTextW(g_hSecondsInput, buf2, (int)std::size(buf2));
+            GetWindowTextW(g_hMinutesInput, buf1, 16);
+            GetWindowTextW(g_hSecondsInput, buf2, 16);
             int minutes = _wtoi(buf1);
             int seconds = _wtoi(buf2);
             KillTimer(hwnd, 1);
@@ -383,78 +395,72 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_PRESET_60MIN: StartShutdownTimer(hwnd, 60, 0); break;
         case IDC_PRESET_120MIN: StartShutdownTimer(hwnd, 120, 0); break;
 
+        case IDCANCEL:
+            if (g_hWarningDialog && g_WarningActive)
+            {
+                DestroyWindow(g_hWarningDialog);
+                g_hWarningDialog = nullptr;
+                g_WarningActive = false;
+                KillTimer(hwnd, 1);
+                g_RemainingSeconds = 0;
+                SetWindowTextW(g_hMinutesInput, L"0");
+                SetWindowTextW(g_hSecondsInput, L"0");
+                SendMessageW(g_hProgressBar, PBM_SETPOS, 0, 0);
+            }
+            break;
+
         case IDC_CANCEL_BUTTON:
             KillTimer(hwnd, 1);
             g_RemainingSeconds = 0;
-            g_IsFinalWarningShown = false;
-            SetWindowTextW(g_hMinutesInput, L"0");
-            SetWindowTextW(g_hSecondsInput, L"0");
             SendMessageW(g_hProgressBar, PBM_SETPOS, 0, 0);
-            MessageBoxW(hwnd, L"Таймер отменён.", L"Отмена", MB_OK | MB_ICONINFORMATION);
+            break;
+
+            // Меню "Файл"
+        case IDM_FILE_EXIT:
+            PostQuitMessage(0);
             break;
 
         case IDM_FILE_ABOUT:
-            MessageBoxW(hwnd,
-                L"Shutdown Timer V3\n\nПростая утилита для планирования Авто-выключения, перезагрузки или сна.\nАвтор: Tsuyu™",
-                L"О программе", MB_OK | MB_ICONINFORMATION);
+            MessageBoxW(hwnd, L"Shutdown Timer V3\n© 2025", L"О программе", MB_OK | MB_ICONINFORMATION);
             break;
 
-        case IDM_FILE_EXIT:
-            DestroyWindow(hwnd);
-            break;
-
+            // Меню "Настройки" (чекбоксы)
         case IDM_SETTINGS_AUTOSTART:
-        case IDM_SETTINGS_SOUNDWARN:
-        case IDM_SETTINGS_CONFIRMSHUT:
-        {
-            HMENU hMenu = GetSubMenu(GetMenu(hwnd), 1);
-            UINT state = GetMenuState(hMenu, id, MF_BYCOMMAND);
-            bool newState = !(state & MF_CHECKED);
-            CheckMenuItem(hMenu, id, MF_BYCOMMAND | (newState ? MF_CHECKED : MF_UNCHECKED));
-            if (id == IDM_SETTINGS_AUTOSTART) g_AutoStart = newState;
-            if (id == IDM_SETTINGS_SOUNDWARN) g_SoundWarning = newState;
-            if (id == IDM_SETTINGS_CONFIRMSHUT) g_ConfirmShutdown = newState;
+            g_AutoStart = !g_AutoStart;
+            CheckMenuItem(GetMenu(hwnd), IDM_SETTINGS_AUTOSTART,
+                MF_BYCOMMAND | (g_AutoStart ? MF_CHECKED : MF_UNCHECKED));
             break;
-        }
 
+        case IDM_SETTINGS_SOUNDWARN:
+            g_SoundWarning = !g_SoundWarning;
+            CheckMenuItem(GetMenu(hwnd), IDM_SETTINGS_SOUNDWARN,
+                MF_BYCOMMAND | (g_SoundWarning ? MF_CHECKED : MF_UNCHECKED));
+            break;
+
+        case IDM_SETTINGS_CONFIRMSHUT:
+            g_ConfirmShutdown = !g_ConfirmShutdown;
+            CheckMenuItem(GetMenu(hwnd), IDM_SETTINGS_CONFIRMSHUT,
+                MF_BYCOMMAND | (g_ConfirmShutdown ? MF_CHECKED : MF_UNCHECKED));
+            break;
+
+            // Меню "Режим действия" (радио-группа)
         case IDM_MODE_SHUTDOWN:
         case IDM_MODE_REBOOT:
         case IDM_MODE_SLEEP:
         case IDM_MODE_HIBERNATE:
         {
-            HMENU hMenu = GetSubMenu(GetMenu(hwnd), 2);
-            for (int i = 0; i < 4; i++)
-                CheckMenuItem(hMenu, IDM_MODE_SHUTDOWN + i, MF_BYCOMMAND | MF_UNCHECKED);
-            CheckMenuItem(hMenu, id, MF_BYCOMMAND | MF_CHECKED);
             g_ActionMode = id;
+            HMENU hMenu = GetMenu(hwnd);
+            CheckMenuRadioItem(hMenu, IDM_MODE_SHUTDOWN, IDM_MODE_HIBERNATE, id, MF_BYCOMMAND);
             break;
         }
         }
     }
     break;
 
-    case WM_TIMER:
-        if (--g_RemainingSeconds >= 0)
-        {
-            SendMessageW(g_hProgressBar, PBM_SETPOS, g_TotalSeconds - g_RemainingSeconds, 0);
-            if (!g_IsFinalWarningShown && g_RemainingSeconds == 60)
-            {
-                g_IsFinalWarningShown = true;
-                ShowFinalWarningDialog(hwnd);
-            }
-            if (g_RemainingSeconds == 0)
-            {
-                KillTimer(hwnd, 1);
-                if (g_ConfirmShutdown)
-                {
-                    if (MessageBoxW(hwnd, L"Выполнить запланированное действие?", L"Подтверждение",
-                        MB_YESNO | MB_ICONQUESTION) == IDNO)
-                        break;
-                }
-                PerformSystemAction();
-            }
-        }
-        break;
+    case WM_DRAWITEM:
+        DrawModernButton((LPDRAWITEMSTRUCT)lParam);
+        return TRUE;
 
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -464,44 +470,45 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+
 ATOM RegisterMainWindowClass(HINSTANCE hInstance)
 {
-    WNDCLASSW wc = {};
-    wc.lpfnWndProc = MainWindowProc;
-    wc.hInstance = hInstance;
-    wc.lpszClassName = L"ShutdownTimerV3";
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hIcon = LoadIconW(hInstance, MAKEINTRESOURCE(IDI_APP_ICON));
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    return RegisterClassW(&wc);
+    WNDCLASSEXW wcex{};
+    wcex.cbSize = sizeof(wcex);
+    wcex.lpfnWndProc = MainWindowProc;
+    wcex.hInstance = hInstance;
+    wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcex.lpszClassName = L"ShutdownTimerV3";
+    wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_APP_ICON));
+    wcex.hIconSm = wcex.hIcon;
+    return RegisterClassExW(&wcex);
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow)
 {
     g_hInstance = hInstance;
-
     RegisterMainWindowClass(hInstance);
-    HMENU menu = BuildMenuBar();
-    RECT desktop;
-    GetWindowRect(GetDesktopWindow(), &desktop);
-    int winWidth = 340;
-    int winHeight = 380;
-    int posX = (desktop.right - winWidth) / 2;
-    int posY = (desktop.bottom - winHeight) / 2;
- 
-    g_hMainWindow = CreateWindowExW(0, L"ShutdownTimerV3", L"Shutdown Timer V3",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        posX, posY, winWidth, winHeight,   
-        nullptr, menu, hInstance, nullptr);
 
-    if (!g_hMainWindow) return 0;
+    int width = 340, height = 420;
+    int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
+    int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 
-    InitializeUIControls(g_hMainWindow);
-    ApplyModernVisual(g_hMainWindow);
-    ShowWindow(g_hMainWindow, nCmdShow);
-    UpdateWindow(g_hMainWindow);
+    HWND hwnd = CreateWindowExW(
+        0, L"ShutdownTimerV3", L"Shutdown Timer V3",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+        x, y, width, height,
+        nullptr, BuildMenuBar(), hInstance, nullptr);
 
-    MSG msg{};
+    if (!hwnd) return 0;
+
+    g_hMainWindow = hwnd;
+    InitializeUIControls(hwnd);
+    ApplyModernVisual(hwnd);
+    ShowWindow(hwnd, nCmdShow);
+    UpdateWindow(hwnd);
+
+    MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0))
     {
         TranslateMessage(&msg);
@@ -510,4 +517,3 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow)
 
     return (int)msg.wParam;
 }
-
